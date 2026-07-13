@@ -1,4 +1,3 @@
---
 local PANEL = {}
 
 local Statics = {
@@ -6,7 +5,7 @@ local Statics = {
     {"Suicides", "Suicides"},
     {"Deaths", "Deaths"},
     --{"Victories being a traitor", "zb_hmcd_t_wins"},
-   -- {"Neutralizings a traitor", "zb_hmcd_ino_t_kills"}
+    --{"Neutralizings a traitor", "zb_hmcd_ino_t_kills"}
 }
 
 local tex_gradient_d = surface.GetTextureID("vgui/gradient-d")
@@ -169,10 +168,39 @@ function PANEL:Init()
     ContentHolder:DockMargin(AccountUnit(24),AccountUnit(22),AccountUnit(24),AccountUnit(22))
     ContentHolder.Paint = function() end
 
+    self.TitlePanel = vgui.Create("DPanel",ContentHolder)
+    self.TitlePanel:Dock(TOP)
+    self.TitlePanel:SetTall(AccountUnit(40))
+    self.TitlePanel.Paint = function() end
+
+    self.TitleLabel = vgui.Create("DLabel",self.TitlePanel)
+    self.TitleLabel:Dock(LEFT)
+    self.TitleLabel:SetFont(GetAccountFont("ZCity_Menu_Settings_Small","ZB_InterfaceMedium"))
+    self.TitleLabel:SetTextColor(account_clr_white)
+    self.TitleLabel:SetText("")
+    self.TitleLabel:SetWide(AccountUnit(250))
+
+    self.ChangeTitleBtn = vgui.Create("DButton",self.TitlePanel)
+    self.ChangeTitleBtn:Dock(RIGHT)
+    self.ChangeTitleBtn:SetText("")
+    self.ChangeTitleBtn:SetWide(AccountUnit(20))
+    self.ChangeTitleBtn:SetTall(AccountUnit(20))
+    self.ChangeTitleBtn:SetTextColor(Color(0,0,0,0))
+    self.ChangeTitleBtn.Paint = function(btn,w,h)
+        if btn:IsHovered() then
+            draw.RoundedBox(4,0,0,w,h,Color(255,255,255,80))
+        end
+        draw.SimpleText("⚙", "ZB_InterfaceMedium", w/2, h/2, account_clr_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    self.ChangeTitleBtn.DoClick = function()
+        self:OpenTitleInput()
+    end
+    self.ChangeTitleBtn:SetVisible(false)
+
     self.StatsTitle = vgui.Create("DLabel",ContentHolder)
     local StatsTitle = self.StatsTitle
     StatsTitle:Dock(TOP)
-    StatsTitle:DockMargin(0,0,0,AccountUnit(10))
+    StatsTitle:DockMargin(0,AccountUnit(10),0,AccountUnit(10))
     StatsTitle:SetFont(GetAccountFont("ZCity_Menu_Settings_Small","ZB_InterfaceMedium"))
     StatsTitle:SetTextColor(account_clr_white)
     StatsTitle:SetText("STATISTICS")
@@ -187,6 +215,17 @@ end
 function PANEL:SetPlayer(ply)
     self.MainInfo:SetPlayer(ply)
     self.MainInfo.PlyLabel:SetText( ply:Nick() )
+
+    local title = ply.SvDB and ply.SvDB.Title or ""
+    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
+    self.TitleLabel:SizeToContents()
+
+    local localPly = LocalPlayer()
+    if IsValid(localPly) and localPly == ply then
+        self.ChangeTitleBtn:SetVisible(true)
+    else
+        self.ChangeTitleBtn:SetVisible(false)
+    end
 
     for i,stats in pairs(Statics) do
         local Stat = vgui.Create("DPanel",self.StatPanel)
@@ -218,6 +257,71 @@ function PANEL:SetPlayer(ply)
     end
 end
 
+function PANEL:OpenTitleInput()
+    local frame = vgui.Create("DFrame")
+    frame:SetSize(AccountUnit(300), AccountUnit(150))
+    frame:Center()
+    frame:SetTitle("")
+    frame:ShowCloseButton(false)
+    frame:MakePopup()
+    frame.Paint = function(self,w,h)
+        draw.RoundedBox(8,0,0,w,h,Color(30,30,40,240))
+        surface.SetDrawColor(Color(255,255,255,40))
+        surface.DrawOutlinedRect(0,0,w,h)
+    end
+
+    local titleEntry = vgui.Create("DTextEntry", frame)
+    titleEntry:SetPos(AccountUnit(20), AccountUnit(30))
+    titleEntry:SetSize(AccountUnit(260), AccountUnit(30))
+    titleEntry:SetFont(GetAccountFont("ZCity_Menu_Settings_Small","ZB_InterfaceMedium"))
+    titleEntry:SetText(self.TitleLabel:GetText() == "Без титула" and "" or self.TitleLabel:GetText())
+    titleEntry:SetUpdateOnType(true)
+
+    local submit = vgui.Create("DButton", frame)
+    submit:SetPos(AccountUnit(20), AccountUnit(80))
+    submit:SetSize(AccountUnit(120), AccountUnit(30))
+    submit:SetText("")
+    submit.Paint = function(btn,w,h)
+        draw.RoundedBox(4,0,0,w,h,Color(70,130,70,255))
+        if btn:IsHovered() then
+            draw.RoundedBox(4,0,0,w,h,Color(100,160,100,255))
+        end
+        draw.SimpleText("Применить", "ZB_InterfaceMedium", w/2, h/2, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    submit.DoClick = function()
+        local newTitle = titleEntry:GetText():sub(1, 64)
+        self:SetPlayerTitle(newTitle)
+        frame:Close()
+    end
+
+    local cancel = vgui.Create("DButton", frame)
+    cancel:SetPos(AccountUnit(160), AccountUnit(80))
+    cancel:SetSize(AccountUnit(120), AccountUnit(30))
+    cancel:SetText("")
+    cancel.Paint = function(btn,w,h)
+        draw.RoundedBox(4,0,0,w,h,Color(130,70,70,255))
+        if btn:IsHovered() then
+            draw.RoundedBox(4,0,0,w,h,Color(160,100,100,255))
+        end
+        draw.SimpleText("Отмена", "ZB_InterfaceMedium", w/2, h/2, Color(255,255,255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    cancel.DoClick = function() frame:Close() end
+
+    frame:SetKeyboardInputEnabled(true)
+    frame:SetMouseInputEnabled(true)
+    titleEntry:RequestFocus()
+end
+
+function PANEL:SetPlayerTitle(title)
+    local ply = self.MainInfo:GetPlayer()
+    if not IsValid(ply) then return end
+    net.Start("ZB_SetTitle")
+        net.WriteString(title)
+    net.SendToServer()
+    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
+    self.TitleLabel:SizeToContents()
+end
+
 function PANEL:Udpate(ply)
     for i,stats in pairs(Statics) do
         local Stat = self.StatRows[i]
@@ -226,6 +330,10 @@ function PANEL:Udpate(ply)
             Stat:SizeToContents()
         end
     end
+
+    local title = ply.SvDB and ply.SvDB.Title or ""
+    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
+    self.TitleLabel:SizeToContents()
 end
 
 function PANEL:Close()
@@ -262,6 +370,3 @@ function PANEL:Paint( w, h )
 end
 
 vgui.Register( "ZB_AccountFrame", PANEL, "ZFrame" )
-
-
---vgui.Create("ZB_AccountFrame"):MakePopup()

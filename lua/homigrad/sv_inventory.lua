@@ -12,166 +12,6 @@ META.inventory = {
 }
 META.armors = {}
 
-local lootableSearchClasses = {
-	["prop_physics"] = true,
-	["prop_physics_multiplayer"] = true,
-	["prop_dynamic"] = true,
-	["func_physbox"] = true,
-}
-
-local function isHMCDThief(ent)
-	return IsValid(ent) and ent.HMCD_IsThief == true
-end
-
-local function canThiefSearchLive(ply, ent)
-	return isHMCDThief(ply)
-		and IsValid(ent)
-		and ent:IsPlayer()
-		and ent ~= ply
-		and ent:Alive()
-		and not IsValid(ent.FakeRagdoll)
-		and IsValid(ply)
-		and ply:Alive()
-		and not IsValid(ply.FakeRagdoll)
-end
-
-function hg.HMCDCanThiefSearchLive(ply, ent)
-	return canThiefSearchLive(ply, ent)
-end
-
-local function getThiefPickupKeys(tab, key, ...)
-	if tab == "Armor" then
-		local armor = select(1, ...)
-		return tostring(key), armor and tostring(armor) or nil
-	end
-
-	if tab == "Attachments" then
-		local attachment = select(1, ...)
-		return tostring(attachment or key), tostring(key)
-	end
-
-	return tostring(key)
-end
-
-function hg.MarkThiefPickup(ply, tab, key, ...)
-	if not isHMCDThief(ply) or ply.HMCD_ThiefInitializing then return end
-	if not tab or key == nil then return end
-
-	local picked = ply.HMCD_ThiefPickupInventory or {}
-	if not istable(picked) then picked = {} end
-
-	picked[tab] = picked[tab] or {}
-	local key1, key2 = getThiefPickupKeys(tab, key, ...)
-	picked[tab][key1] = true
-	if key2 then picked[tab][key2] = true end
-
-	ply.HMCD_ThiefPickupInventory = picked
-end
-
-local function isThiefPickupVisible(ent, tab, key, ...)
-	if not isHMCDThief(ent) then return true end
-
-	local picked = ent.HMCD_ThiefPickupInventory or {}
-	if not istable(picked) or not istable(picked[tab]) then return false end
-
-	local key1, key2 = getThiefPickupKeys(tab, key, ...)
-	return picked[tab][key1] == true or (key2 and picked[tab][key2] == true) or false
-end
-
-local function thiefNowOwnsItem(ply, tab, key, ...)
-	if not isHMCDThief(ply) then return false end
-
-	if tab == "Weapons" then
-		return ply.inventory and ply.inventory.Weapons and ply.inventory.Weapons[key] ~= nil
-	end
-
-	if tab == "Ammo" then
-		local ammoName = game.GetAmmoName(tonumber(key) or -1)
-		return ammoName and ply:GetAmmoCount(ammoName) > 0
-	end
-
-	if tab == "Armor" then
-		local armor = select(1, ...)
-		return armor and ply.armors and ply.armors[key] == armor
-	end
-
-	if tab == "Attachments" then
-		local attachment = select(1, ...)
-		if not attachment or not ply.inventory or not istable(ply.inventory.Attachments) then return false end
-
-		for _, owned in pairs(ply.inventory.Attachments) do
-			if owned == attachment then return true end
-		end
-	end
-
-	return false
-end
-
-local function buildSearchVisibilityMask(ent)
-	if not isHMCDThief(ent) then return nil end
-	return table.Copy(ent.HMCD_ThiefPickupInventory or {})
-end
-
-local function weaponUsesSling(wepClass, weaponEnt)
-	if wepClass == "hg_sling" then return true end
-
-	if IsValid(weaponEnt) and weaponEnt.IsPistolHoldType then
-		return not weaponEnt:IsPistolHoldType()
-	end
-
-	local weaponData = weapons.Get(wepClass)
-	if not weaponData then return false end
-	if weaponData.weaponInvCategory == 1 then return true end
-	if weaponData.IsPistol or weaponData.HoldType == "pistol" or weaponData.HoldType == "revolver" then return false end
-
-	return false
-end
-
-local function isSlingProtectedLoot(ent, tab, key)
-	if tab ~= "Weapons" or not IsValid(ent) then return false end
-	if not ent:IsPlayer() or IsValid(ent.FakeRagdoll) then return false end
-
-	local inv = ent.inventory or ent:GetNetVar("Inventory", {})
-	local weaponsInv = istable(inv) and inv.Weapons
-	if not istable(weaponsInv) or not weaponsInv["hg_sling"] then return false end
-
-	return weaponUsesSling(key, weaponsInv[key])
-end
-
-local function resolveLootEntityFromTrace(ply, trace)
-	if not trace then return nil end
-
-	local ent = trace.Entity
-	ent = IsValid(hg.RagdollOwner(ent)) and hg.RagdollOwner(ent) or ent
-
-	if IsValid(ent) and hg.GetLootBoxData and hg.GetLootBoxData(ent) then
-		return ent
-	end
-
-	if not hg.GetLootBoxData then return ent end
-
-	local hitPos = trace.HitPos
-	if not isvector(hitPos) then return ent end
-
-	local bestEnt, bestDistSqr
-
-	for _, candidate in ipairs(ents.FindInSphere(hitPos, 48)) do
-		if not IsValid(candidate) then continue end
-		if not lootableSearchClasses[candidate:GetClass()] then continue end
-		if not hg.GetLootBoxData(candidate) then continue end
-
-		local nearest = candidate.NearestPoint and candidate:NearestPoint(hitPos) or candidate:GetPos()
-		local distSqr = nearest:DistToSqr(hitPos)
-
-		if not bestDistSqr or distSqr < bestDistSqr then
-			bestEnt = candidate
-			bestDistSqr = distSqr
-		end
-	end
-
-	return bestEnt or ent
-end
-
 function hg.CreateInv(ply)
     ply.inventory = {}
     local inv = ply.inventory
@@ -187,12 +27,12 @@ function hg.CreateInv(ply)
     ply:SetNetVar("Inventory", inv)
 end
 
-function hg.RenewInv(ply, isDead, deathRagdoll)
+function hg.RenewInv(ply, isDead)
     ply.inventory = ply.inventory or {}
     local inv = ply.inventory
     inv.Weapons = inv.Weapons or {}
 
-    local sling = inv.Weapons["hg_sling"] --I wish I could automate all this
+    local sling = inv.Weapons["hg_sling"] -- Вот бы все это автоматизировать
     local kastet = inv.Weapons["hg_brassknuckles"]
     local flashlight = inv.Weapons["hg_flashlight"]
 
@@ -210,14 +50,14 @@ function hg.RenewInv(ply, isDead, deathRagdoll)
             wep:DrawShadow(false)
             wep:AddSolidFlags(FSOLID_NOT_SOLID)
 
-            local rag = IsValid(deathRagdoll) and deathRagdoll or ply:GetNWEntity("RagdollDeath")
+            local rag = ply:GetNWEntity("RagdollDeath")
 
             if IsValid(rag) then
                 wep:SetPos(rag:GetPos() + vector_up * - 10000)
                 wep:SetParent(rag, 0)
             else
-                wep:SetParent(NULL)
-                wep:SetPos(ply:GetPos() + vector_up * -10000)
+                wep:SetPos(ply:GetPos())
+                wep:SetParent(ply, 0)
             end
 
             inv.Weapons[wep:GetClass()] = wep
@@ -248,7 +88,6 @@ hook.Add("WeaponEquip", "homigrad-inventory", function(wep, ply)
 
     inv.Weapons = inv.Weapons or {}
     inv.Weapons[wep:GetClass()] = wep
-    hg.MarkThiefPickup(ply, "Weapons", wep:GetClass())
     
     if wep.sling then
         wep.sling = nil
@@ -280,9 +119,6 @@ end)
 hook.Add("PlayerAmmoChanged", "homigrad-inventory", function(ply,ammoID,oldcount,newcount)
     if not ply.inventory then return end
     ply.inventory.Ammo = ply:GetAmmo()
-    if newcount > oldcount then
-        hg.MarkThiefPickup(ply, "Ammo", ammoID)
-    end
     ply:SetNetVar("Inventory", ply.inventory)
 
     if game.GetAmmoName(ammoID) == "Grenade" then
@@ -308,8 +144,7 @@ hook.Add("PlayerDropWeapon", "homigrad-inventory", function(ply)
     local bon = ent:LookupBone("ValveBiped.Bip01_R_Hand")
 
     if wep.RemoveFake then wep:RemoveFake() end
-    hg.SafeSetCollisionGroup(wep, COLLISION_GROUP_WORLD)
-    hg.SafeCollisionRulesChanged(wep)
+    wep:SetCollisionGroup(COLLISION_GROUP_WORLD)
     ply:DropWeapon(wep, ply:EyePos(), vecZero)
     wep:SetPos(ply:EyePos())
     ply.inventory.Weapons[wep:GetClass()] = nil
@@ -336,8 +171,7 @@ hook.Add("PlayerDropWeapon", "homigrad-inventory", function(ply)
         wep:SetPos(localpos)
         wep:SetAngles(localang)
         wep:SetVelocity(vector_origin)
-        hg.SafeSetCollisionGroup(wep, COLLISION_GROUP_WEAPON)
-        hg.SafeCollisionRulesChanged(wep)
+        wep:SetCollisionGroup(COLLISION_GROUP_WEAPON)
 
         local physbone = ent:TranslateBoneToPhysBone(bon)
         local physbonetorso = ent:TranslateBoneToPhysBone(ent:LookupBone("ValveBiped.Bip01_Spine2"))
@@ -359,7 +193,7 @@ hook.Add("PlayerDropWeapon", "homigrad-inventory", function(ply)
         local enta = ply:Alive() and (ply.organism and !ply.organism.otrub) and ply or ent
         local inv = enta:GetNetVar("Inventory",{})
         if not inv["Weapons"] then return end
-        if inv["Weapons"]["hg_sling"] and weaponUsesSling(wep:GetClass(), wep) then
+        if inv["Weapons"]["hg_sling"] and ishgweapon(wep) and not wep:IsPistolHoldType() then
             local rope = constraint.Rope(wep,ent,0,physbonetorso,vector_origin,vector_origin,10,5,0,0,"null",true,color_white)
             wep.sling = true
             ent.rope_attach = wep
@@ -391,8 +225,6 @@ function hg.TransferItems(ply,ragdoll)
 		--end
 		ragdoll.inventory = inv
 		ragdoll:SetNetVar("Inventory",ragdoll.inventory)
-		ragdoll.HMCD_IsThief = ply.HMCD_IsThief == true
-		ragdoll.HMCD_ThiefPickupInventory = table.Copy(ply.HMCD_ThiefPickupInventory or {})
 		-- ragdoll:SetNetVar("zb_Scrappers_RaidMoney",ply:GetNetVar("zb_Scrappers_RaidMoney"))
 
 		hg.CreateInv(ply)
@@ -414,10 +246,10 @@ end
 
 hook.Add("PostPlayerDeath", "homigrad-inventory", function(ply)
     local ragdoll = ply:GetNWEntity("RagdollDeath")
-    hg.RenewInv(ply, true, ragdoll)
+    hg.RenewInv(ply, true)
     hg.TransferItems(ply, ragdoll)
     ply:SetNetVar("Inventory", ply.inventory)
-    if IsValid(ragdoll) then ragdoll:SetNetVar("Inventory", ragdoll.inventory) end
+    ragdoll:SetNetVar("Inventory", ragdoll.inventory)
 
     --ply:StripWeapons() -- WTF
     ply:SetNetVar("Armor",{})
@@ -429,7 +261,6 @@ local functions = {
     ["Weapons"] = function(ply, ent, wep)
         if (ent:IsPlayer() and IsValid(ent:GetActiveWeapon()) and ent:GetActiveWeapon():GetClass() == wep) then return end
         if (not ent.inventory.Weapons[wep]) then return end
-        if ent:IsPlayer() and isSlingProtectedLoot(ent, "Weapons", wep) then return end
 
         --local weapon = weapons.Get(wep)
         --if not weapon then return end
@@ -442,7 +273,7 @@ local functions = {
             weapon.DontEquipInstantly = (not weapon.NoHolster) and (weapon.weaponInvCategory != 1)
             weapon.IsSpawned = true
             weapon.init = true
-            --weapon.init = true--<^aren't these the same thing?
+            --weapon.init = true--<^разве это не одно и то же?
             weapon:Spawn()
             weapon:SetPos(ent:GetPos())
             weapon:SetAngles(ent:GetAngles())
@@ -485,7 +316,7 @@ local functions = {
         weapon.IsSpawned = false
         weapon.init = false
 
-        if not hook.Run("PlayerCanPickupWeapon",ply,weapon) then 
+        if hook.Run("PlayerCanPickupWeapon",ply,weapon) == false then 
             --print("huy")
             weapon.IsSpawned = true weapon.init = true 
             weapon:SetPos(ply:EyePos())
@@ -547,16 +378,11 @@ net.Receive("ply_take_item", function(len, ply)
     local ent = net.ReadEntity()
     
     if !IsValid(ent) or !IsValid(ply) then return end
-    if ent:IsPlayer() and not IsValid(ent.FakeRagdoll) and not canThiefSearchLive(ply, ent) then return end
-    if not isThiefPickupVisible(ent, tblIndex, thing, unpack(tbl)) then return end
-    if isSlingProtectedLoot(ent, tblIndex, thing) then return end
+    if ent:IsPlayer() and not IsValid(ent.FakeRagdoll) then return end
 
     if ent:GetPos():Distance(ply:GetPos()) > 125 then return end
     local func = functions[tblIndex]
     if func then func(ply, ent, thing, unpack(tbl)) end
-    if thiefNowOwnsItem(ply, tblIndex, thing, unpack(tbl)) then
-        hg.MarkThiefPickup(ply, tblIndex, thing, unpack(tbl))
-    end
     ply:SetNetVar("Inventory", ply.inventory)
     ent:SetNetVar("Inventory", ent.inventory)
     ply:SyncArmor()
@@ -568,19 +394,12 @@ local playerMeta = FindMetaTable("Player")
 function playerMeta:OpenInventory(ent)
     hook.Run("ZB_InventoryOpened",self,ent)
     if not IsValid(ent) then return end
-    if ent:IsPlayer() and not IsValid(ent.FakeRagdoll) and not canThiefSearchLive(self, ent) then return end
+    if ent:IsPlayer() and not IsValid(ent.FakeRagdoll) then return end
     if ent:IsPlayer() then hg.RenewInv(ent) end
     if self:IsPlayer() then hg.RenewInv(self) end
     self.cooldown_takeitem = CurTime() + 0.5
-    local visibilityMask = buildSearchVisibilityMask(ent)
-    local liveThiefSearch = ent:IsPlayer() and not IsValid(ent.FakeRagdoll) and canThiefSearchLive(self, ent)
     net.Start("should_open_inv")
     net.WriteEntity(ent)
-    net.WriteBool(visibilityMask ~= nil)
-    if visibilityMask then
-        net.WriteTable(visibilityMask)
-    end
-    net.WriteBool(liveThiefSearch)
     net.Send(self)
 end
 
@@ -607,7 +426,13 @@ hook.Add("Player Think", "loot-fellows",function(ply)
         local trace = hg.eyeTrace(ply, 60)
     
         if not trace then return end
-        local ent = resolveLootEntityFromTrace(ply, trace)
+        local ent = trace.Entity
+        ent = IsValid(hg.RagdollOwner(ent)) and hg.RagdollOwner(ent) or ent
+		if IsValid(ent) and ent:IsPlayer() and ent ~= ply and ent:Alive() and ent.organism and not ent.organism.otrub then
+			if not ply.keypressed then ply:ChatPrint("You cant loot them, they are awake.") end
+			ply.keypressed = true
+			return
+		end
 		local _ply, _ent, canloot = hook.Run("ZB_CanLootInventory", ply, ent, canloot)
 		if canloot ~= nil and canloot == false then
 			ply.keypressed = true
@@ -626,7 +451,7 @@ hook.Add("Player Think", "loot-fellows",function(ply)
     end
 end)
 
--- Prop inventory example
+--// Prop inventory example
 --[[
 	local pos = Entity(1):GetEyeTrace().HitPos
 	local ent = ents.Create("prop_physics")
