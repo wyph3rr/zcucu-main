@@ -342,7 +342,7 @@ function PANEL:SetPlayerTitle(title)
     
     self:UpdateTitleDisplay()
 end
-
+--add tituls
 function PANEL:Udpate(ply)
     for i,stats in pairs(Statics) do
         local Stat = self.StatRows[i]
