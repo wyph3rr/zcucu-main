@@ -4,8 +4,6 @@ local Statics = {
     {"Kills", "Kills"},
     {"Suicides", "Suicides"},
     {"Deaths", "Deaths"},
-    --{"Victories being a traitor", "zb_hmcd_t_wins"},
-    --{"Neutralizings a traitor", "zb_hmcd_ino_t_kills"}
 }
 
 local tex_gradient_d = surface.GetTextureID("vgui/gradient-d")
@@ -46,6 +44,14 @@ local function TypeText(label,target,speed)
     end
 end
 
+-- Один глобальный приёмник обновления титула
+net.Receive("ZB_TitleUpdated", function()
+    local frame = zb and zb.Experience and zb.Experience.OpenedAccount
+    if IsValid(frame) and frame.UpdateTitleDisplay then
+        frame:UpdateTitleDisplay()
+    end
+end)
+
 function PANEL:Init()
     self:SetSize(ScrW()*0.55,ScrH())
     self:Center()
@@ -56,6 +62,7 @@ function PANEL:Init()
     self:SetAlpha(0)
     self:AlphaTo(255, 0.15, 0)
     self.StatRows = {}
+    self.CurrentPlayer = nil
     
     self.Sidebar = vgui.Create("DPanel",self)
     local Sidebar = self.Sidebar
@@ -213,20 +220,21 @@ function PANEL:Init()
 end
 
 function PANEL:SetPlayer(ply)
+    self.CurrentPlayer = ply
     self.MainInfo:SetPlayer(ply)
     self.MainInfo.PlyLabel:SetText( ply:Nick() )
-
-    local title = ply.SvDB and ply.SvDB.Title or ""
-    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
-    self.TitleLabel:SizeToContents()
+    self:UpdateTitleDisplay()
 
     local localPly = LocalPlayer()
-    if IsValid(localPly) and localPly == ply then
+    if IsValid(localPly) and localPly:IsAdmin() then
         self.ChangeTitleBtn:SetVisible(true)
     else
         self.ChangeTitleBtn:SetVisible(false)
     end
 
+    -- Очистка старых строк статистики
+    self.StatPanel:Clear()
+    self.StatRows = {}
     for i,stats in pairs(Statics) do
         local Stat = vgui.Create("DPanel",self.StatPanel)
         Stat:Dock(TOP)
@@ -255,6 +263,17 @@ function PANEL:SetPlayer(ply)
 
         self.StatRows[i] = Value
     end
+end
+
+function PANEL:UpdateTitleDisplay()
+    if not IsValid(self.CurrentPlayer) then
+        self.TitleLabel:SetText("Без титула")
+        self.TitleLabel:SizeToContents()
+        return
+    end
+    local title = self.CurrentPlayer:GetNWString("ZB_Title", "")
+    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
+    self.TitleLabel:SizeToContents()
 end
 
 function PANEL:OpenTitleInput()
@@ -313,13 +332,15 @@ function PANEL:OpenTitleInput()
 end
 
 function PANEL:SetPlayerTitle(title)
-    local ply = self.MainInfo:GetPlayer()
-    if not IsValid(ply) then return end
+    local target = self.CurrentPlayer
+    if not IsValid(target) then return end
+    
     net.Start("ZB_SetTitle")
+        net.WriteEntity(target)
         net.WriteString(title)
     net.SendToServer()
-    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
-    self.TitleLabel:SizeToContents()
+    
+    self:UpdateTitleDisplay()
 end
 
 function PANEL:Udpate(ply)
@@ -330,10 +351,8 @@ function PANEL:Udpate(ply)
             Stat:SizeToContents()
         end
     end
-
-    local title = ply.SvDB and ply.SvDB.Title or ""
-    self.TitleLabel:SetText(title ~= "" and title or "Без титула")
-    self.TitleLabel:SizeToContents()
+    self.CurrentPlayer = ply
+    self:UpdateTitleDisplay()
 end
 
 function PANEL:Close()

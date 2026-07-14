@@ -290,6 +290,12 @@ local info_social_links = {
         subtitle = "If you are looking for a more vanilla-ish BETTER alternative.",
         url = "https://discord.gg/3UrJapj6kF",
         icon = Material("vgui/communhub.png", "smooth")
+    },
+    {
+        title = "Zcucu LEAK",
+        subtitle = "Our server. Fun and kill nggas.",
+        url = "https://discord.gg/vgEtm3Mny",
+        icon = material("vgui/zcucu.png")
     }
 }
 local info_social_icon_size = MenuUnit(24)
