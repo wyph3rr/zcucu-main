@@ -265,7 +265,7 @@ local info_stat_rows = {
     {"Kills", "Kills"},
     {"Deaths", "Deaths"},
     {"Suicides", "Suicides"}
-}
+} --penis hor us
 local info_social_links = {
     {
         title = "Lapse",
